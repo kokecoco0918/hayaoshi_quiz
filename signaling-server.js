@@ -1,28 +1,33 @@
 const WebSocket = require('ws');
-const port = process.env.PORT || 8080;  // Renderの環境変数PORTを使用
-const server = new WebSocket.Server({ port: port });
+const http = require('http');
 
-const clients = {};
+// サーバーのポート設定（Renderでは環境変数 PORT を使用）
+const port = process.env.PORT || 8080;
 
-server.on('connection', ws => {
-  ws.on('message', message => {
-    const data = JSON.parse(message);
+// HTTPサーバーを作成
+const server = http.createServer();
+const wss = new WebSocket.Server({ server });
 
-    if (data.type === 'register') {
-      clients[data.clientId] = ws;
-    } else if (data.type === 'offer' || data.type === 'answer' || data.type === 'candidate') {
-      if (clients[data.targetId]) {
-        clients[data.targetId].send(JSON.stringify(data));
+wss.on('connection', (ws) => {
+  console.log('Client connected');
+
+  ws.on('message', (message) => {
+    console.log(`Received message: ${message}`);
+
+    // 他のクライアントにメッセージをブロードキャスト
+    wss.clients.forEach((client) => {
+      if (client !== ws && client.readyState === WebSocket.OPEN) {
+        client.send(message);
       }
-    }
+    });
   });
 
   ws.on('close', () => {
-    for (let clientId in clients) {
-      if (clients[clientId] === ws) {
-        delete clients[clientId];
-        break;
-      }
-    }
+    console.log('Client disconnected');
   });
+});
+
+// サーバーをポートでリッスン
+server.listen(port, () => {
+  console.log(`Signaling server is running on port ${port}`);
 });
