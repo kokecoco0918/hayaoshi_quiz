@@ -21,10 +21,12 @@ wss.on('connection', function connection(ws) {
     ws.on('message', function incoming(message) {
         console.log('received: %s', message);
         
-        // 他のすべてのクライアントにメッセージをブロードキャスト
+        // JSONデータに変換して他のすべてのクライアントにメッセージをブロードキャスト
+        const data = JSON.parse(message);
+        
         clients.forEach(function each(client) {
             if (client !== ws && client.readyState === WebSocket.OPEN) {
-                client.send(message);
+                client.send(JSON.stringify(data)); // JSONに変換して送信
             }
         });
     });
