@@ -1,36 +1,45 @@
 const WebSocket = require('ws');
-const wss = new WebSocket.Server({ port: process.env.PORT });
 
-let clientCount = 0;
-let buzzerLocked = false;
+const port = process.env.PORT || 8080;
+const wss = new WebSocket.Server({ port: port });
 
-wss.on('connection', (ws) => {
+let clientCount = 0;   // クライアントの接続番号を管理
+let clients = new Set(); // クライアントを管理
+
+// WebSocketサーバーへの接続イベント
+wss.on('connection', function connection(ws) {
     clientCount++;
-    const clientId = clientCount;
-    ws.send(JSON.stringify({ type: 'clientId', id: clientId }));
+    clients.add(ws);
+    ws.clientId = clientCount;
+    
+    console.log(`Client ${ws.clientId} connected.`);
+    
+    // クライアントに接続された番号を送信
+    ws.send(JSON.stringify({ type: 'clientId', id: ws.clientId }));
 
-    ws.on('message', (message) => {
-        const data = JSON.parse(message);
-        if (data.type === 'buzzer' && !buzzerLocked) {
-            buzzerLocked = true;
-            // 他の全クライアントに誰が早押ししたかを通知
-            wss.clients.forEach(client => {
-                if (client.readyState === WebSocket.OPEN) {
-                    client.send(JSON.stringify({ type: 'buzzer', name: data.name }));
-                }
-            });
-        } else if (data.type === 'reset') {
-            buzzerLocked = false;
-            // 全クライアントにリセットを通知
-            wss.clients.forEach(client => {
-                if (client.readyState === WebSocket.OPEN) {
-                    client.send(JSON.stringify({ type: 'reset' }));
-                }
-            });
+    // メッセージ受信イベント
+    ws.on('message', function incoming(message) {
+        console.log('received: %s', message);
+        
+        // 他のすべてのクライアントにメッセージをブロードキャスト
+        clients.forEach(function each(client) {
+            if (client !== ws && client.readyState === WebSocket.OPEN) {
+                client.send(message);
+            }
+        });
+    });
+
+    // クライアント切断時のイベント
+    ws.on('close', function close() {
+        clients.delete(ws); // クライアント削除
+        console.log(`Client ${ws.clientId} disconnected.`);
+        
+        // すべてのクライアントが切断されたときにclientCountをリセット
+        if (clients.size === 0) {
+            clientCount = 0;
+            console.log('All clients disconnected. Resetting client count.');
         }
     });
-
-    ws.on('close', () => {
-        console.log(`Client ${clientId} disconnected`);
-    });
 });
+
+console.log(`WebSocket server is running on port ${port}`);
