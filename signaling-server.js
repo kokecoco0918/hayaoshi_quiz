@@ -1,33 +1,36 @@
 const WebSocket = require('ws');
-const http = require('http');
+const wss = new WebSocket.Server({ port: process.env.PORT });
 
-// サーバーのポート設定（Renderでは環境変数 PORT を使用）
-const port = process.env.PORT || 8080;
-
-// HTTPサーバーを作成
-const server = http.createServer();
-const wss = new WebSocket.Server({ server });
+let clientCount = 0;
+let buzzerLocked = false;
 
 wss.on('connection', (ws) => {
-  console.log('Client connected');
+    clientCount++;
+    const clientId = clientCount;
+    ws.send(JSON.stringify({ type: 'clientId', id: clientId }));
 
-  ws.on('message', (message) => {
-    console.log(`Received message: ${message}`);
-
-    // 他のクライアントにメッセージをブロードキャスト
-    wss.clients.forEach((client) => {
-      if (client !== ws && client.readyState === WebSocket.OPEN) {
-        client.send(message);
-      }
+    ws.on('message', (message) => {
+        const data = JSON.parse(message);
+        if (data.type === 'buzzer' && !buzzerLocked) {
+            buzzerLocked = true;
+            // 他の全クライアントに誰が早押ししたかを通知
+            wss.clients.forEach(client => {
+                if (client.readyState === WebSocket.OPEN) {
+                    client.send(JSON.stringify({ type: 'buzzer', name: data.name }));
+                }
+            });
+        } else if (data.type === 'reset') {
+            buzzerLocked = false;
+            // 全クライアントにリセットを通知
+            wss.clients.forEach(client => {
+                if (client.readyState === WebSocket.OPEN) {
+                    client.send(JSON.stringify({ type: 'reset' }));
+                }
+            });
+        }
     });
-  });
 
-  ws.on('close', () => {
-    console.log('Client disconnected');
-  });
-});
-
-// サーバーをポートでリッスン
-server.listen(port, () => {
-  console.log(`Signaling server is running on port ${port}`);
+    ws.on('close', () => {
+        console.log(`Client ${clientId} disconnected`);
+    });
 });
